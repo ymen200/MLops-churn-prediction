@@ -9,7 +9,7 @@ from model_pipeline import (
     load_model,
 )
 
-TARGET_FILES = ["model_pipeline.py", "main.py", "pipeline_prefect.py"]
+TARGET_FILES = ["model_pipeline.py", "main.py", "pipeline_prefect.py", "app.py"]
 
 
 @task(name="Installer les dépendances")
@@ -72,6 +72,12 @@ def evaluate_model_task(model, X_test, y_test):
     return evaluate_model(model, X_test, y_test)
 
 
+@task(name="Lancer FastAPI")
+def run_api_task():
+    print("Démarrage du serveur Uvicorn / FastAPI sur le port 8000...")
+    subprocess.run(["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"])
+
+
 @flow(name="code")
 def code_flow():
     install_dependencies()
@@ -93,6 +99,11 @@ def evaluate_flow():
     _, X_test, _, y_test = prepare_data_task()
     model = load_model_task()
     evaluate_model_task(model, X_test, y_test)
+
+
+@flow(name="api")
+def api_flow():
+    run_api_task()
 
 
 @flow(name="all")
@@ -118,7 +129,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--flow",
         type=str,
-        choices=["code", "train", "evaluate", "all"],
+        choices=["code", "train", "evaluate", "api", "all"],
         default="all",
         help="Flow Prefect à exécuter",
     )
@@ -130,5 +141,7 @@ if __name__ == "__main__":
         train_flow()
     elif args.flow == "evaluate":
         evaluate_flow()
+    elif args.flow == "api":
+        api_flow()
     elif args.flow == "all":
         all_flow()
