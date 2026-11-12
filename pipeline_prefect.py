@@ -75,7 +75,9 @@ def evaluate_model_task(model, X_test, y_test):
 @task(name="Lancer FastAPI")
 def run_api_task():
     print("Démarrage du serveur Uvicorn / FastAPI sur le port 8000...")
-    subprocess.run(["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"])
+    subprocess.run(
+        ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    )
 
 
 @flow(name="code")
