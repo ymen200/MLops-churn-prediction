@@ -1,6 +1,6 @@
+import os
+
 import joblib
-import mlflow
-import mlflow.sklearn
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
@@ -8,9 +8,17 @@ from sklearn.metrics import accuracy_score, classification_report, confusion_mat
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 
+try:
+    import mlflow  # type: ignore[import-not-found]
+    import mlflow.sklearn  # type: ignore[import-not-found]
+except ModuleNotFoundError:
+    mlflow = None  # type: ignore[assignment]
+
 # Configuration du serveur de tracking MLflow
-mlflow.set_tracking_uri("http://127.0.0.1:5000")
-mlflow.set_experiment("Customer_Churn_Experiment")
+MLFLOW_TRACKING_URI = os.getenv("MLFLOW_TRACKING_URI", None)
+if MLFLOW_TRACKING_URI and mlflow is not None:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+    mlflow.set_experiment("Customer_Churn_Experiment")
 
 
 def prepare_data(filepath="Churn_Modelling.csv"):
@@ -43,26 +51,32 @@ def prepare_data(filepath="Churn_Modelling.csv"):
 
 
 def train_model(X_train, y_train, n_estimators=100, max_depth=None, random_state=42):
-    """Entraîne le modèle Random Forest avec des hyperparamètres configurables et MLflow."""
-    with mlflow.start_run(run_name="RandomForest_Training"):
-        # Enregistrement des hyperparamètres dans MLflow
+    """Entraîne le modèle Random Forest avec des hyperparamètres configurables."""
+
+    # Si on lance l'entraînement avec MLflow actif
+    use_mlflow = mlflow is not None and MLFLOW_TRACKING_URI is not None
+
+    if use_mlflow:
+        mlflow.start_run(run_name="RandomForest_Training")
         mlflow.log_param("n_estimators", n_estimators)
         mlflow.log_param("max_depth", max_depth if max_depth is not None else "None")
         mlflow.log_param("random_state", random_state)
 
-        rf = RandomForestClassifier(
-            n_estimators=n_estimators, max_depth=max_depth, random_state=random_state
-        )
-        rf.fit(X_train, y_train)
+    rf = RandomForestClassifier(
+        n_estimators=n_estimators, max_depth=max_depth, random_state=random_state
+    )
+    rf.fit(X_train, y_train)
 
-        # Enregistrement du modèle (artefact) dans MLflow avec skops_trusted_types
+    if use_mlflow:
         mlflow.sklearn.log_model(
-            rf, artifact_path="model", skops_trusted_types=["sklearn.tree._tree.Tree"]
+            rf,
+            artifact_path="model",
+            skops_trusted_types=["sklearn.tree._tree.Tree"],
         )
+        mlflow.end_run()
         print("Modèle enregistré avec succès dans MLflow.")
 
-        return rf
-
+    return rf
 
 def evaluate_model(model, X_test, y_test):
     """Évalue les performances du modèle, affiche les métriques et les log dans MLflow."""
@@ -75,11 +89,14 @@ def evaluate_model(model, X_test, y_test):
     print("\nClassification Report:\n", report)
 
     # Enregistrement de la métrique accuracy dans MLflow
-    if mlflow.active_run():
-        mlflow.log_metric("accuracy", acc)
-    else:
-        with mlflow.start_run(run_name="Evaluation_Only"):
+    if mlflow is not None:
+        if mlflow.active_run():
             mlflow.log_metric("accuracy", acc)
+        else:
+            with mlflow.start_run(run_name="Evaluation_Only"):
+                mlflow.log_metric("accuracy", acc)
+    else:
+        print("MLflow n'est pas installé ou non configuré. Métriques non journalisées.")
 
     return acc, matrix
 
